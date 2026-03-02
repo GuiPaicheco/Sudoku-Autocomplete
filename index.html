@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sudoku Resolver Simples</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f3f5fb; margin:0; }
+    .container { max-width: 780px; margin: 24px auto; background:#fff; padding:20px; border-radius:12px; }
+    h1 { margin-top:0; }
+    p { color:#5c6480; }
+    .grid { display:grid; grid-template-columns:repeat(9,42px); gap:2px; }
+    input.cell, .cell-fixed { width:42px; height:42px; text-align:center; font-size:20px; box-sizing:border-box; border:1px solid #ccd4ef; }
+    .cell-fixed { display:flex; align-items:center; justify-content:center; background:#eef2ff; }
+    .row-border { border-bottom:3px solid #3756b5 !important; }
+    .col-border { border-right:3px solid #3756b5 !important; }
+    button { margin-top:12px; margin-right:8px; border:0; background:#3457c7; color:#fff; padding:10px 16px; border-radius:8px; cursor:pointer; }
+    button.secondary { background:#7b88b8; }
+    .error { margin:12px 0; color:#b32525; }
+    ol { line-height:1.5; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Sudoku Resolver Simples</h1>
+    <p>Digite somente os números conhecidos (1 a 9). Deixe vazio o que falta e clique em resolver.</p>
+    <div id="error" class="error"></div>
+    <div id="board" class="grid"></div>
+    <div>
+      <button id="solveBtn">Resolver</button>
+      <button id="clearBtn" class="secondary">Limpar</button>
+    </div>
+
+    <h2>Passo a passo</h2>
+    <ol id="steps"></ol>
+  </main>
+
+<script>
+const boardEl = document.getElementById('board');
+const stepsEl = document.getElementById('steps');
+const errorEl = document.getElementById('error');
+
+for (let r=0; r<9; r++) {
+  for (let c=0; c<9; c++) {
+    const input = document.createElement('input');
+    input.className = 'cell';
+    if (r===2 || r===5) input.classList.add('row-border');
+    if (c===2 || c===5) input.classList.add('col-border');
+    input.maxLength = 1;
+    input.inputMode = 'numeric';
+    input.dataset.row = r;
+    input.dataset.col = c;
+    boardEl.appendChild(input);
+  }
+}
+
+function getBoard() {
+  const board = Array.from({length:9}, ()=>Array(9).fill(0));
+  for (const input of document.querySelectorAll('.cell')) {
+    const r = Number(input.dataset.row);
+    const c = Number(input.dataset.col);
+    const v = input.value.trim();
+    if (!v) continue;
+    if (!/^[1-9]$/.test(v)) {
+      throw new Error(`Valor inválido na linha ${r+1}, coluna ${c+1}. Use 1 a 9.`);
+    }
+    board[r][c] = Number(v);
+  }
+  return board;
+}
+
+function candidates(board, row, col) {
+  const used = new Set(board[row]);
+  for (let r=0;r<9;r++) used.add(board[r][col]);
+  const br = Math.floor(row/3)*3;
+  const bc = Math.floor(col/3)*3;
+  for (let r=br;r<br+3;r++) for (let c=bc;c<bc+3;c++) used.add(board[r][c]);
+  const out = [];
+  for (let n=1;n<=9;n++) if (!used.has(n)) out.push(n);
+  return out;
+}
+
+function isComplete(board) {
+  return board.every(row => row.every(v => v!==0));
+}
+
+function findEmpty(board) {
+  for (let r=0;r<9;r++) for (let c=0;c<9;c++) if (board[r][c]===0) return [r,c];
+  return null;
+}
+
+function isValid(board, row, col, value) {
+  if (board[row].includes(value)) return false;
+  for (let r=0;r<9;r++) if (board[r][col]===value) return false;
+  const br = Math.floor(row/3)*3;
+  const bc = Math.floor(col/3)*3;
+  for (let r=br;r<br+3;r++) for (let c=bc;c<bc+3;c++) if (board[r][c]===value) return false;
+  return true;
+}
+
+function fillSingles(board, steps) {
+  let progress = false;
+  for (let r=0;r<9;r++) {
+    for (let c=0;c<9;c++) {
+      if (board[r][c]===0) {
+        const cand = candidates(board,r,c);
+        if (cand.length===1) {
+          board[r][c] = cand[0];
+          steps.push({row:r,col:c,value:cand[0],reason:'Único candidato na célula'});
+          progress = true;
+        }
+      }
+    }
+  }
+  return progress;
+}
+
+function backtrack(board, steps) {
+  const pos = findEmpty(board);
+  if (!pos) return true;
+  const [r,c] = pos;
+  for (const value of candidates(board,r,c)) {
+    if (!isValid(board,r,c,value)) continue;
+    board[r][c] = value;
+    steps.push({row:r,col:c,value,reason:'Tentativa válida (backtracking)'});
+    if (backtrack(board, steps)) return true;
+    board[r][c] = 0;
+  }
+  return false;
+}
+
+function solveSudoku(board) {
+  const steps = [];
+  while (fillSingles(board, steps)) {}
+  if (!isComplete(board)) {
+    const solved = backtrack(board, steps);
+    if (!solved) return {solved:false, steps, board};
+  }
+  return {solved:true, steps, board};
+}
+
+function renderBoard(board) {
+  for (const input of document.querySelectorAll('.cell')) {
+    const r = Number(input.dataset.row);
+    const c = Number(input.dataset.col);
+    input.value = board[r][c] === 0 ? '' : String(board[r][c]);
+  }
+}
+
+document.getElementById('solveBtn').addEventListener('click', () => {
+  errorEl.textContent = '';
+  stepsEl.innerHTML = '';
+  try {
+    const board = getBoard();
+    const result = solveSudoku(board);
+    if (!result.solved) {
+      errorEl.textContent = 'Não foi possível resolver este Sudoku com os dados informados.';
+      return;
+    }
+    renderBoard(result.board);
+    result.steps.forEach(step => {
+      const li = document.createElement('li');
+      li.textContent = `Linha ${step.row+1}, coluna ${step.col+1}: inserir ${step.value} (${step.reason})`;
+      stepsEl.appendChild(li);
+    });
+  } catch (err) {
+    errorEl.textContent = err.message;
+  }
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  for (const input of document.querySelectorAll('.cell')) input.value = '';
+  stepsEl.innerHTML = '';
+  errorEl.textContent = '';
+});
+</script>
+</body>
+</html>
